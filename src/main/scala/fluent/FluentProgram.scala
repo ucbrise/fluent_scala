@@ -1,6 +1,7 @@
 package fluent
 
 import scala.collection.mutable
+import scala.collection.immutable
 
 import akka.actor.{ Actor, ActorLogging, ActorRef, ActorSystem, Props }
 import com.typesafe.config.ConfigFactory
@@ -14,7 +15,7 @@ object FluentActor {
 }
 
 class FluentActor(
-    collections: mutable.Map[String, Collection[Product]],
+    collections: immutable.Map[String, Collection[Product]],
     rules: List[Rule[Product]])
   extends Actor {
   import FluentActor._
@@ -58,15 +59,19 @@ trait FluentProgram {
   val name: String
   val host: String
   val port: Int
-  val collections: List[Collection[Product]]
-  val rules: List[Rule[Product]]
+  val collections: List[Any]
+  val rules: List[Any]
 
   def run(): (ActorSystem, ActorRef) = {
     val hostport = s"akka.remote.netty.tcp.port=$port"
     val fallback = ConfigFactory.load()
     val config = ConfigFactory.parseString(hostport).withFallback(fallback)
     val system = ActorSystem("fluent", config)
-    val actor = system.actorOf(Props[FluentActor], name)
+
+    val erased_rules = rules.map({case (rule: Rule[Product]) => rule})
+    val erased_collections = collections.map({case (c: Collection[Product]) => c})
+    val collection_map = erased_collections.map(c => (c.name, c)).toMap
+    val actor = system.actorOf(Props(new FluentActor(collection_map, erased_rules)), name)
     (system, actor)
   }
 }
