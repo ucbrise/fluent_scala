@@ -43,6 +43,7 @@ object Client {
     val host = args(3)
     val port = args(4).toInt
     val client = new Client(server_host, server_port, name, host, port)
+    println(s"This program is monotonic? ${client.isMonotonic()}")
     val (system, actor) = client.run()
   }
 }

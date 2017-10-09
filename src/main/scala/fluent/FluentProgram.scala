@@ -68,8 +68,28 @@ trait FluentProgram {
   val bootstrap_rules: List[Any] = List()
   val rules: List[Any]
 
+  def erased_brules = bootstrap_rules.map({case (r: Rule[Product]) => r})
+  def erased_rules = rules.map({case (r: Rule[Product]) => r})
+  def erased_collections = collections.map({case (c: Collection[Product]) => c})
+
   def hostport(): String = {
     s"$host:$port"
+  }
+
+  def isMonotonic(): Boolean = {
+    val isRelalgOk = (ra: RelAlg[Product]) => {
+      ra match {
+        case (_: Diff[_]) | (_: Group[_, _, _]) => false
+        case _ => true
+      }
+    }
+    val isRuleOk = (rule: Rule[Product]) => {
+      rule match {
+        case Rule(_, Delete(), _) => false
+        case Rule(_, _, ra) => isRelalgOk(ra)
+      }
+    }
+    erased_brules.forall(isRuleOk) && erased_rules.forall(isRuleOk)
   }
 
   def run(): (ActorSystem, ActorRef) = {
@@ -78,9 +98,6 @@ trait FluentProgram {
     val config = ConfigFactory.parseString(hostport).withFallback(fallback)
     val system = ActorSystem("fluent", config)
 
-    val erased_brules = bootstrap_rules.map({case (r: Rule[Product]) => r})
-    val erased_rules = rules.map({case (r: Rule[Product]) => r})
-    val erased_collections = collections.map({case (c: Collection[Product]) => c})
     val collection_map = erased_collections.map(c => (c.name, c)).toMap
     val actor = system.actorOf(Props(new FluentActor(collection_map, erased_brules, erased_rules)), "fluent")
     (system, actor)

@@ -33,6 +33,7 @@ object Server {
     val host = args(0)
     val port = args(1).toInt
     val server = new Server(host, port)
+    println(s"This program is monotonic? ${server.isMonotonic()}")
     val (system, actor) = server.run()
   }
 }
