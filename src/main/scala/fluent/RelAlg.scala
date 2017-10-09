@@ -1,6 +1,15 @@
 package fluent
 
-sealed trait RelAlg[A <: Product]
+sealed trait RelAlg[A <: Product] {
+  def filter(f: A => Boolean) = Filter(this, f)
+  def map[B <: Product](f: A => B) = Map(this, f)
+  def cross[B <: Product](rhs: RelAlg[B]) = Cross(this, rhs)
+  def union(rhs: RelAlg[A]) = Union(this, rhs)
+  def intersect(rhs: RelAlg[A]) = Intersect(this, rhs)
+  def diff(rhs: RelAlg[A]) = Diff(this, rhs)
+  def group[K, B <: Product](key: A => K, agg: Set[A] => B) = Group(this, key, agg)
+}
+
 case class Empty[A <: Product]() extends RelAlg[A]
 case class Const[A <: Product](x: A) extends RelAlg[A]
 case class Relation[A <: Product](t: Collection[A]) extends RelAlg[A]
