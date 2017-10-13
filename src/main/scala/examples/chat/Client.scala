@@ -11,23 +11,22 @@ class Client(
     val port: Int)
   extends FluentProgram {
 
+  import Api._
   val stdout = new Stdout()
-  val connect = new Channel[(String, String)](
-    "connect", List("server_addr", "client_addr"))
-  val mcast = new Channel[(String, String)](
-    "mcast", List("addr", "msg"))
+  val connect = new Channel[Connect]("connect")
+  val mcast = new Channel[MCast]("mcast")
 
   override val collections = List(stdout, connect, mcast)
 
   override val bootstrap_rules = {
     List(
-      connect += Const((s"$server_host:$server_port", hostport)),
-      mcast += Const((s"$server_host:$server_port", name)),
+      connect += Const(Connect(s"$server_host:$server_port", hostport)),
+      mcast += Const(MCast(s"$server_host:$server_port", name)),
     )
   }
 
   override val rules = {
-    List(stdout += Relation(mcast).map(t => Tuple1(t._2)))
+    List(stdout += Relation(mcast).map(m => Tuple1(m.msg)))
   }
 }
 

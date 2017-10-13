@@ -4,7 +4,6 @@ import scala.collection.mutable
 
 class Stdout extends Collection[Tuple1[String]] {
   override val name = "stdout"
-  override val columns = List("stdout")
 
   override def get(): mutable.Set[Tuple1[String]] = {
     throw new UnsupportedOperationException("Stdout does not support get.")

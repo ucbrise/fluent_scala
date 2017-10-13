@@ -2,7 +2,7 @@ package fluent
 
 import scala.collection.mutable
 
-class Channel[A <: Product](val name: String, val columns: List[String]) extends Collection[A] {
+class Channel[A <: AnyRef{val dst: String}](val name: String) extends Collection[A] {
   private var tuples: mutable.Set[A] = mutable.Set()
 
   override def get(): mutable.Set[A] = {

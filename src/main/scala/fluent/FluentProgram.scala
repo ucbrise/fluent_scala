@@ -3,21 +3,23 @@ package fluent
 import scala.collection.mutable
 import scala.collection.immutable
 
-import akka.actor.{ Actor, ActorLogging, ActorRef, ActorSystem, Props }
+import akka.actor.{Actor, ActorLogging, ActorRef, ActorSystem, Props}
 import com.typesafe.config.ConfigFactory
 
 object FluentActor {
-  def props(): Props = {
-    Props[FluentActor]
+  def props(collections: immutable.Map[String, Collection[Any]],
+            bootstrap_rules: List[Rule[Any]],
+            rules: List[Rule[Any]]): Props = {
+    Props(new FluentActor(collections, bootstrap_rules, rules))
   }
 
-  case class Message(name: String, t: Product)
+  case class Message(name: String, t: Any)
 }
 
 class FluentActor(
-    collections: immutable.Map[String, Collection[Product]],
-    bootstrap_rules: List[Rule[Product]],
-    rules: List[Rule[Product]])
+    collections: immutable.Map[String, Collection[Any]],
+    bootstrap_rules: List[Rule[Any]],
+    rules: List[Rule[Any]])
   extends Actor {
   import FluentActor._
 
@@ -33,11 +35,12 @@ class FluentActor(
     }
   }
 
-  private def eval_rule(rule: Rule[Product]) = {
+  private def eval_rule(rule: Rule[Any]) = {
     rule match {
-      case Rule(c: Channel[Product], Merge(), ra) => {
+      case Rule(c: Channel[_], Merge(), ra) => {
         for (t <- RelAlg.eval(ra)) {
-          val dst_hostport = t.productElement(0)
+          //val dst_hostport = t.productElement(0)
+          val dst_hostport = t.asInstanceOf[AnyRef{val dst:String}].dst
           val dst_addr = s"akka.tcp://fluent@${dst_hostport}/user/fluent"
           val msg = Message(c.name, t)
           context.actorSelection(dst_addr) ! msg
@@ -68,28 +71,36 @@ trait FluentProgram {
   val bootstrap_rules: List[Any] = List()
   val rules: List[Any]
 
-  def erased_brules = bootstrap_rules.map({case (r: Rule[Product]) => r})
-  def erased_rules = rules.map({case (r: Rule[Product]) => r})
-  def erased_collections = collections.map({case (c: Collection[Product]) => c})
+  private def erased_collections: List[Collection[Any]] = {
+    collections.map({case (c: Collection[Any]) => c})
+  }
+
+  private def erased_bootstrap_rules: List[Rule[Any]] = {
+    bootstrap_rules.map({case (r: Rule[Any]) => r})
+  }
+
+  private def erased_rules: List[Rule[Any]] = {
+    rules.map({case (r: Rule[Any]) => r})
+  }
 
   def hostport(): String = {
     s"$host:$port"
   }
 
   def isMonotonic(): Boolean = {
-    val isRelalgOk = (ra: RelAlg[Product]) => {
+    val isRelalgOk = (ra: RelAlg[Any]) => {
       ra match {
         case (_: Diff[_]) | (_: Group[_, _, _]) => false
         case _ => true
       }
     }
-    val isRuleOk = (rule: Rule[Product]) => {
+    val isRuleOk = (rule: Rule[Any]) => {
       rule match {
         case Rule(_, Delete(), _) => false
         case Rule(_, _, ra) => isRelalgOk(ra)
       }
     }
-    erased_brules.forall(isRuleOk) && erased_rules.forall(isRuleOk)
+    erased_bootstrap_rules.forall(isRuleOk) && erased_rules.forall(isRuleOk)
   }
 
   def run(): (ActorSystem, ActorRef) = {
@@ -99,7 +110,11 @@ trait FluentProgram {
     val system = ActorSystem("fluent", config)
 
     val collection_map = erased_collections.map(c => (c.name, c)).toMap
-    val actor = system.actorOf(Props(new FluentActor(collection_map, erased_brules, erased_rules)), "fluent")
+    val props = FluentActor.props(
+      collection_map,
+      erased_bootstrap_rules,
+      erased_rules)
+    val actor = system.actorOf(props, "fluent")
     (system, actor)
   }
 }

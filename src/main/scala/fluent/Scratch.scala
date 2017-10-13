@@ -2,7 +2,7 @@ package fluent
 
 import scala.collection.mutable
 
-class Scratch[A <: Product](val name: String, val columns: List[String]) extends Collection[A] {
+class Scratch[A](val name: String) extends Collection[A] {
   private var tuples: mutable.Set[A] = mutable.Set()
 
   override def get(): mutable.Set[A] = {
