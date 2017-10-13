@@ -9,3 +9,9 @@ trait Collection[A] {
   def delete(t: A)
   def tick()
 }
+
+object Collection {
+  implicit def toRelAlg[A](c: Collection[A]): Relation[A] = {
+    Relation(c)
+  }
+}

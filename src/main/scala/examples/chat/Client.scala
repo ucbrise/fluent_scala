@@ -26,7 +26,7 @@ class Client(
   }
 
   override val rules = {
-    List(stdout += Relation(mcast).map(m => Tuple1(m.msg)))
+    List(stdout += mcast.map(m => Tuple1(m.msg)))
   }
 }
 

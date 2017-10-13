@@ -17,10 +17,10 @@ class Server(val host: String, val port: Int) extends FluentProgram {
 
   override val rules = {
     val rule1 = {
-      nodelist += Relation(connect).map(c => NodeList(c.client_addr))
+      nodelist += connect.map(c => NodeList(c.client_addr))
     }
     val rule2 = {
-      mcast += Relation(mcast).
+      mcast += mcast.
                cross(Relation(nodelist)).
                map({case (m, n) => MCast(n.addr, m.msg)})
     }
