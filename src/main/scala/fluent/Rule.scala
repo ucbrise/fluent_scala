@@ -1,19 +1,30 @@
 package fluent
 
-sealed trait RuleType
-case class Merge() extends RuleType
-case class Delete() extends RuleType
-
-case class Rule[A](c: Collection[A], ruleType: RuleType, ra: RelAlg[A])
+sealed trait Rule
+case class SetUnionLatticeRule[A](r: SetUnionLattice.Rule[A]) extends Rule
+case class IntMaxLatticeRule(r: IntMaxLattice.Rule) extends Rule
+case class BoolOrLatticeRule(r: BoolOrLattice.Rule) extends Rule
+case class ChannelRule[A <: AnyRef{val dst: String}](r: Channel.Rule[A]) extends Rule
+case class StdOutRule(r: StdOut.Rule) extends Rule
 
 object Rule {
-  implicit class Infix[A](c: Collection[A]) {
-    def +=(ra: RelAlg[A]): Rule[A] = {
-      Rule(c, Merge(), ra)
+  def isMonotonic(rule: Rule): Boolean = {
+    rule match {
+      case SetUnionLatticeRule(r) => SetUnionLattice.Rule.isMonotonic(r)
+      case IntMaxLatticeRule(r) => IntMaxLattice.Rule.isMonotonic(r)
+      case BoolOrLatticeRule(r) => BoolOrLattice.Rule.isMonotonic(r)
+      case ChannelRule(r) => Channel.Rule.isMonotonic(r)
+      case StdOutRule(r) => StdOut.Rule.isMonotonic(r)
     }
+  }
 
-    def -=(ra: RelAlg[A]): Rule[A] = {
-      Rule(c, Delete(), ra)
+  def isIncreasing(rule: Rule): Boolean = {
+    rule match {
+      case SetUnionLatticeRule(r) => SetUnionLattice.Rule.isIncreasing(r)
+      case IntMaxLatticeRule(r) => IntMaxLattice.Rule.isIncreasing(r)
+      case BoolOrLatticeRule(r) => BoolOrLattice.Rule.isIncreasing(r)
+      case ChannelRule(r) => Channel.Rule.isIncreasing(r)
+      case StdOutRule(r) => StdOut.Rule.isIncreasing(r)
     }
   }
 }

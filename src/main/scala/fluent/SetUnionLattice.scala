@@ -1,8 +1,10 @@
 package fluent
 
-import scala.collection.mutable
+import scala.language.implicitConversions
 
-case class SetUnionLattice[A](private var xs: mutable.Set[A]) extends Lattice[SetUnionLattice[A]] {
+case class SetUnionLattice[A](var xs: Set[A]) extends Lattice[SetUnionLattice[A]] {
+  def this() = this(Set())
+
   // Ordering //////////////////////////////////////////////////////////////////
   def tryCompareTo(that: SetUnionLattice[A]): Option[Int] = {
     (xs.subsetOf(that.xs), xs == that.xs, that.xs.subsetOf(xs)) match {
@@ -63,7 +65,17 @@ case class SetUnionLattice[A](private var xs: mutable.Set[A]) extends Lattice[Se
 
 object SetUnionLattice {
   // Expressions ///////////////////////////////////////////////////////////////
-  sealed trait Expr[A]
+  sealed trait Expr[A] {
+    def filter(f: A => Boolean) = Filter(this, f)
+    def map[B](f: A => B) = Map(this, f)
+    def cross[B](rhs: Expr[B]) = Cross(this, rhs)
+    def union(rhs: Expr[A]) = Union(this, rhs)
+    def intersect(rhs: Expr[A]) = Intersect(this, rhs)
+    def diff(rhs: Expr[A]) = Diff(this, rhs)
+    def size() = IntMaxLattice.Size(this)
+  }
+
+  case class Val[A](x: A) extends Expr[A]
   case class Const[A](x: SetUnionLattice[A]) extends Expr[A]
   case class Filter[A](e: Expr[A], f: A => Boolean) extends Expr[A]
   case class Map[A, B](e: Expr[A], f: A => B) extends Expr[B]
@@ -75,6 +87,7 @@ object SetUnionLattice {
   object Expr {
     def eval[A](e: Expr[A]): SetUnionLattice[A] = {
       e match {
+        case Val(x) => SetUnionLattice(Set(x))
         case Const(x) => x
         case Filter(e, f) => eval(e).filter(f)
         case Map(e, f) => eval(e).map(f)
@@ -87,7 +100,8 @@ object SetUnionLattice {
 
     def isMonotonic[A](e: Expr[A]): Boolean = {
       e match {
-        case Const(x) => true
+        case Val(_) => true
+        case Const(_) => true
         case Filter(e, _) => isMonotonic(e)
         case Map(e, _) => isMonotonic(e)
         case Cross(lhs, rhs) => isMonotonic(lhs) && isMonotonic(rhs)
@@ -96,6 +110,10 @@ object SetUnionLattice {
         case Diff(_, _) => false
       }
     }
+  }
+
+  implicit def toExpr[A](l: SetUnionLattice[A]): Const[A] = {
+    Const(l)
   }
 
   // Methods ///////////////////////////////////////////////////////////////////
@@ -142,5 +160,13 @@ object SetUnionLattice {
     def isIncreasing[A](rule: Rule[A]) = {
       Method.isIncreasing(rule.m)
     }
+
+    implicit def toRule[A](r: Rule[A]): fluent.Rule = SetUnionLatticeRule(r)
+  }
+
+  implicit class RuleInfix[A](l: SetUnionLattice[A]) {
+    def <--(e: Expr[A]) = Rule(l, AssignEqual, e)
+    def +=(e: Expr[A]) = Rule(l, AddEqual, e)
+    def -=(e: Expr[A]) = Rule(l, SubtractEqual, e)
   }
 }

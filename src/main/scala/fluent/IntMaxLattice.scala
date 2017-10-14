@@ -1,6 +1,7 @@
 package fluent
 
 import scala.math
+import scala.language.implicitConversions
 
 case class IntMaxLattice(private var x: Int) extends Lattice[IntMaxLattice] {
   // Ordering //////////////////////////////////////////////////////////////////
@@ -48,8 +49,15 @@ case class IntMaxLattice(private var x: Int) extends Lattice[IntMaxLattice] {
 }
 
 object IntMaxLattice {
+
   // Expressions ///////////////////////////////////////////////////////////////
-  sealed trait Expr
+  sealed trait Expr {
+    def +(rhs: Expr) = Add(this, rhs)
+    def -(rhs: Expr) = Subtract(this, rhs)
+    def >(x: Int) = BoolOrLattice.Greater(this, x)
+    def >=(x: Int) = BoolOrLattice.GreaterEqual(this, x)
+  }
+
   case class Const(x: IntMaxLattice) extends Expr
   case class Add(lhs: Expr, rhs: Expr) extends Expr
   case class Subtract(lhs: Expr, rhs: Expr) extends Expr
@@ -73,6 +81,10 @@ object IntMaxLattice {
         case Size(e) => SetUnionLattice.Expr.isMonotonic(e)
       }
     }
+  }
+
+  implicit def toConst(l: IntMaxLattice): Const = {
+    Const(l)
   }
 
   // Methods ///////////////////////////////////////////////////////////////////
@@ -122,5 +134,15 @@ object IntMaxLattice {
     def isIncreasing(rule: Rule) = {
       Method.isIncreasing(rule.m)
     }
+
+    implicit def toRule(r: Rule): fluent.Rule = IntMaxLatticeRule(r)
+  }
+
+
+  implicit class RuleInfix(l: IntMaxLattice) {
+    def <--(e: Expr) = Rule(l, AssignEqual, e)
+    def <=(e: Expr) = Rule(l, MergeEqual, e)
+    def +=(e: Expr) = Rule(l, AddEqual, e)
+    def -=(e: Expr) = Rule(l, SubtractEqual, e)
   }
 }

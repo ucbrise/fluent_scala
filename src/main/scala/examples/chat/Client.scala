@@ -1,7 +1,6 @@
 package examples.chat
 
 import fluent._
-import fluent.Rule.Infix
 
 class Client(
     val server_host: String,
@@ -12,21 +11,20 @@ class Client(
   extends FluentProgram {
 
   import Api._
-  val stdout = new Stdout()
+  val stdout = new StdOut()
   val connect = new Channel[Connect]("connect")
   val mcast = new Channel[MCast]("mcast")
 
-  override val collections = List(stdout, connect, mcast)
-
   override val bootstrap_rules = {
+    import SetUnionLattice._
     List(
-      connect += Const(Connect(s"$server_host:$server_port", hostport)),
-      mcast += Const(MCast(s"$server_host:$server_port", name)),
+      connect += Val(Connect(s"$server_host:$server_port", hostport)),
+      mcast += Val(MCast(s"$server_host:$server_port", name)),
     )
   }
 
   override val rules = {
-    List(stdout += mcast.map(m => Tuple1(m.msg)))
+    List(stdout += mcast.map(_.msg))
   }
 }
 
@@ -43,6 +41,7 @@ object Client {
     val port = args(4).toInt
     val client = new Client(server_host, server_port, name, host, port)
     println(s"This program is monotonic? ${client.isMonotonic()}")
+    println(s"This program is increasing? ${client.isIncreasing()}")
     val (system, actor) = client.run()
   }
 }

@@ -1,5 +1,7 @@
 package fluent
 
+import scala.language.implicitConversions
+
 case class BoolOrLattice(private var b: Boolean) extends Lattice[BoolOrLattice] {
   // Ordering //////////////////////////////////////////////////////////////////
   def tryCompareTo(that: BoolOrLattice): Option[Int] = {
@@ -35,12 +37,16 @@ case class BoolOrLattice(private var b: Boolean) extends Lattice[BoolOrLattice] 
 
 object BoolOrLattice {
   // Expressions ///////////////////////////////////////////////////////////////
-  sealed trait Expr
+  sealed trait Expr {
+    def &&(rhs: Expr) = And(this, rhs)
+    def ||(rhs: Expr) = Or(this, rhs)
+  }
+
   case class Const(x: BoolOrLattice) extends Expr
   case class And(lhs: Expr, rhs: Expr) extends Expr
   case class Or(lhs: Expr, rhs: Expr) extends Expr
   case class Greater(e: IntMaxLattice.Expr, x: Int) extends Expr
-  case class GreaterEq(e: IntMaxLattice.Expr, x: Int) extends Expr
+  case class GreaterEqual(e: IntMaxLattice.Expr, x: Int) extends Expr
 
   object Expr {
     def eval(e: Expr): BoolOrLattice = {
@@ -49,7 +55,7 @@ object BoolOrLattice {
         case And(lhs, rhs) => eval(lhs) && eval(rhs)
         case Or(lhs, rhs) => eval(lhs) || eval(rhs)
         case Greater(e, x) => IntMaxLattice.Expr.eval(e) > x
-        case GreaterEq(e, x) => IntMaxLattice.Expr.eval(e) >= x
+        case GreaterEqual(e, x) => IntMaxLattice.Expr.eval(e) >= x
       }
     }
 
@@ -59,9 +65,13 @@ object BoolOrLattice {
         case And(lhs, rhs) => isMonotonic(lhs) && isMonotonic(rhs)
         case Or(lhs, rhs) => isMonotonic(lhs) && isMonotonic(rhs)
         case Greater(e, x) => IntMaxLattice.Expr.isMonotonic(e)
-        case GreaterEq(e, x) => IntMaxLattice.Expr.isMonotonic(e)
+        case GreaterEqual(e, x) => IntMaxLattice.Expr.isMonotonic(e)
       }
     }
+  }
+
+  implicit def toConst(l: BoolOrLattice): Const = {
+    Const(l)
   }
 
   // Methods ///////////////////////////////////////////////////////////////////
@@ -107,5 +117,13 @@ object BoolOrLattice {
     def isIncreasing(rule: Rule) = {
       Method.isIncreasing(rule.m)
     }
+
+    implicit def toRule(r: Rule): fluent.Rule = BoolOrLatticeRule(r)
+  }
+
+  implicit class RuleInfix(l: BoolOrLattice) {
+    def <--(e: Expr) = Rule(l, AssignEqual, e)
+    def &&=(e: Expr) = Rule(l, AndEqual, e)
+    def ||=(e: Expr) = Rule(l, OrEqual, e)
   }
 }
