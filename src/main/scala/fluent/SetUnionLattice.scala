@@ -54,11 +54,11 @@ case class SetUnionLattice[A](var xs: Set[A]) extends Lattice[SetUnionLattice[A]
     xs = that.xs
   }
 
-  def +=(that: SetUnionLattice[A]) = {
+  def addEqual(that: SetUnionLattice[A]) = {
     xs = xs.union(that.xs)
   }
 
-  def -=(that: SetUnionLattice[A]) = {
+  def subtractequal(that: SetUnionLattice[A]) = {
     xs = xs.diff(that.xs)
   }
 }
@@ -67,6 +67,7 @@ object SetUnionLattice {
   // Expressions ///////////////////////////////////////////////////////////////
   sealed trait Expr[A] {
     def eval(): SetUnionLattice[A]
+    def isMonotonic(): Boolean
     def channels(): Set[fluent.Channel.Existential]
 
     def filter(f: A => Boolean) = Filter(this, f)
@@ -80,59 +81,56 @@ object SetUnionLattice {
 
   case class Val[A](x: A) extends Expr[A] {
     def eval() = SetUnionLattice(Set(x))
+    def isMonotonic() = true
     def channels() = Set()
   }
+
   case class Channel[A <: AnyRef{val dst: String}](c: fluent.Channel[A]) extends Expr[A] {
     def eval() = SetUnionLattice(c.get)
+    def isMonotonic() = true
     def channels() = Set(c)
   }
+
   case class Const[A](x: SetUnionLattice[A]) extends Expr[A] {
     def eval() = x
+    def isMonotonic() = true
     def channels() = Set()
   }
+
   case class Filter[A](e: Expr[A], f: A => Boolean) extends Expr[A] {
     def eval() = e.eval().filter(f)
+    def isMonotonic() = e.isMonotonic()
     def channels() = e.channels()
   }
+
   case class Map[A, B](e: Expr[A], f: A => B) extends Expr[B] {
     def eval() = e.eval().map(f)
+    def isMonotonic() = e.isMonotonic()
     def channels() = e.channels()
   }
+
   case class Cross[A, B](lhs: Expr[A], rhs: Expr[B]) extends Expr[(A, B)] {
     def eval() = lhs.eval().cross(rhs.eval())
+    def isMonotonic() = lhs.isMonotonic() && rhs.isMonotonic()
     def channels() = lhs.channels() ++ rhs.channels()
   }
+
   case class Union[A](lhs: Expr[A], rhs: Expr[A]) extends Expr[A] {
     def eval() = lhs.eval().union(rhs.eval())
+    def isMonotonic() = lhs.isMonotonic() && rhs.isMonotonic()
     def channels() = lhs.channels() ++ rhs.channels()
   }
+
   case class Intersect[A](lhs: Expr[A], rhs: Expr[A]) extends Expr[A] {
     def eval() = lhs.eval().intersect(rhs.eval())
+    def isMonotonic() = lhs.isMonotonic() && rhs.isMonotonic()
     def channels() = lhs.channels() ++ rhs.channels()
   }
+
   case class Diff[A](lhs: Expr[A], rhs: Expr[A]) extends Expr[A] {
     def eval() = lhs.eval().diff(rhs.eval())
+    def isMonotonic() = lhs.isMonotonic() && rhs.isMonotonic()
     def channels() = lhs.channels() ++ rhs.channels()
-  }
-
-  object Expr {
-    def eval[A](e: Expr[A]): SetUnionLattice[A] = {
-      e.eval()
-    }
-
-    def isMonotonic[A](e: Expr[A]): Boolean = {
-      e match {
-        case Val(_) => true
-        case Channel(_) => true
-        case Const(_) => true
-        case Filter(e, _) => isMonotonic(e)
-        case Map(e, _) => isMonotonic(e)
-        case Cross(lhs, rhs) => isMonotonic(lhs) && isMonotonic(rhs)
-        case Union(lhs, rhs) => isMonotonic(lhs) && isMonotonic(rhs)
-        case Intersect(lhs, rhs) => isMonotonic(lhs) && isMonotonic(rhs)
-        case Diff(_, _) => false
-      }
-    }
   }
 
   implicit def toExpr[A](l: SetUnionLattice[A]): Const[A] = {
@@ -140,59 +138,48 @@ object SetUnionLattice {
   }
 
   // Methods ///////////////////////////////////////////////////////////////////
-  sealed trait Method
-  case object AssignEqual extends Method
-  case object AddEqual extends Method
-  case object SubtractEqual extends Method
+  sealed trait Method {
+    def isMonotonic(): Boolean
+    def isIncreasing(): Boolean
+  }
 
-  object Method {
-    def isMonotonic(m: Method): Boolean = {
-      m match {
-        case AssignEqual => true
-        case AddEqual => true
-        case SubtractEqual => false
-      }
-    }
+  case object Assign extends Method {
+    def isMonotonic() = true
+    def isIncreasing() = false
+  }
 
-    def isIncreasing(m: Method): Boolean = {
-      m match {
-        case AssignEqual => false
-        case AddEqual => true
-        case SubtractEqual => false
-      }
-    }
+  case object AddEqual extends Method {
+    def isMonotonic() = true
+    def isIncreasing() = true
+  }
+
+  case object SubtractEqual extends Method {
+    def isMonotonic() = false
+    def isIncreasing() = false
   }
 
   // Rules /////////////////////////////////////////////////////////////////////
-  case class Rule[A](l: SetUnionLattice[A], m: Method, e: Expr[A])
-
-  object Rule {
-    def eval[A](rule: Rule[A]) = {
-      val e = rule.e.eval()
-      rule.m match {
-        case AssignEqual => rule.l.assign(e)
-        case AddEqual => rule.l += e
-        case SubtractEqual => rule.l -= e
+  case class Rule[A](l: SetUnionLattice[A], m: Method, e: Expr[A]) {
+    def eval() = {
+      val v = e.eval()
+      m match {
+        case Assign => l.assign(v)
+        case AddEqual => l.addEqual(v)
+        case SubtractEqual => l.subtractequal(v)
       }
     }
 
-    def isMonotonic[A](rule: Rule[A]) = {
-      Method.isMonotonic(rule.m) && Expr.isMonotonic(rule.e)
-    }
+    def isMonotonic(): Boolean = m.isMonotonic() && e.isMonotonic()
+    def isIncreasing(): Boolean = m.isIncreasing()
+    def channels(): Set[fluent.Channel.Existential] = e.channels()
+  }
 
-    def isIncreasing[A](rule: Rule[A]) = {
-      Method.isIncreasing(rule.m)
-    }
-
-    def channels[A](rule: Rule[A]): Set[fluent.Channel.Existential] = {
-      rule.e.channels()
-    }
-
+  object Rule {
     implicit def toRule[A](r: Rule[A]): fluent.Rule = SetUnionLatticeRule(r)
   }
 
   implicit class RuleInfix[A](l: SetUnionLattice[A]) {
-    def <--(e: Expr[A]) = Rule(l, AssignEqual, e)
+    def <--(e: Expr[A]) = Rule(l, Assign, e)
     def +=(e: Expr[A]) = Rule(l, AddEqual, e)
     def -=(e: Expr[A]) = Rule(l, SubtractEqual, e)
   }

@@ -14,19 +14,19 @@ case class IntMaxLattice(private var x: Int) extends Lattice[IntMaxLattice] {
     new IntMaxLattice(math.max(x, that.x))
   }
 
-  def +(that: IntMaxLattice): IntMaxLattice = {
+  def add(that: IntMaxLattice): IntMaxLattice = {
     IntMaxLattice(x + that.x)
   }
 
-  def -(that: IntMaxLattice): IntMaxLattice = {
+  def subtract(that: IntMaxLattice): IntMaxLattice = {
     IntMaxLattice(x - that.x)
   }
 
-  def >(x: Int): BoolOrLattice = {
+  def greater(x: Int): BoolOrLattice = {
     BoolOrLattice(this.x > x)
   }
 
-  def >=(x: Int): BoolOrLattice = {
+  def greaterEqual(x: Int): BoolOrLattice = {
     BoolOrLattice(this.x >= x)
   }
 
@@ -39,11 +39,11 @@ case class IntMaxLattice(private var x: Int) extends Lattice[IntMaxLattice] {
     x = merge(that).x
   }
 
-  def +=(that: IntMaxLattice) = {
+  def addEqual(that: IntMaxLattice) = {
     x += that.x
   }
 
-  def -=(that: IntMaxLattice) = {
+  def subtractEqual(that: IntMaxLattice) = {
     x -= that.x
   }
 }
@@ -52,35 +52,33 @@ object IntMaxLattice {
 
   // Expressions ///////////////////////////////////////////////////////////////
   sealed trait Expr {
+    def eval(): IntMaxLattice
+    def isMonotonic(): Boolean
+
     def +(rhs: Expr) = Add(this, rhs)
     def -(rhs: Expr) = Subtract(this, rhs)
     def >(x: Int) = BoolOrLattice.Greater(this, x)
     def >=(x: Int) = BoolOrLattice.GreaterEqual(this, x)
   }
 
-  case class Const(x: IntMaxLattice) extends Expr
-  case class Add(lhs: Expr, rhs: Expr) extends Expr
-  case class Subtract(lhs: Expr, rhs: Expr) extends Expr
-  case class Size[A](e: SetUnionLattice.Expr[A]) extends Expr
+  case class Const(x: IntMaxLattice) extends Expr {
+    override def eval() = x
+    override def isMonotonic() = true
+  }
 
-  object Expr {
-    def eval(e: Expr): IntMaxLattice = {
-      e match {
-        case Const(x) => x
-        case Add(lhs, rhs) => eval(lhs) + eval(rhs)
-        case Subtract(lhs, rhs) => eval(lhs) - eval(rhs)
-        case Size(x) => SetUnionLattice.Expr.eval(x).size()
-      }
-    }
+  case class Add(lhs: Expr, rhs: Expr) extends Expr {
+    override def eval() = lhs.eval() add rhs.eval()
+    override def isMonotonic() = lhs.isMonotonic() && rhs.isMonotonic()
+  }
 
-    def isMonotonic(e: Expr): Boolean = {
-      e match {
-        case Const(_) => true
-        case Add(lhs, rhs) => isMonotonic(lhs) && isMonotonic(rhs)
-        case Subtract(_, _) => false
-        case Size(e) => SetUnionLattice.Expr.isMonotonic(e)
-      }
-    }
+  case class Subtract(lhs: Expr, rhs: Expr) extends Expr {
+    override def eval() = lhs.eval() subtract rhs.eval()
+    override def isMonotonic() = false
+  }
+
+  case class Size[A](e: SetUnionLattice.Expr[A]) extends Expr {
+    override def eval() = e.eval().size()
+    override def isMonotonic() = e.isMonotonic()
   }
 
   implicit def toConst(l: IntMaxLattice): Const = {
@@ -88,63 +86,54 @@ object IntMaxLattice {
   }
 
   // Methods ///////////////////////////////////////////////////////////////////
-  sealed trait Method
-  case object AssignEqual extends Method
-  case object MergeEqual extends Method
-  case object AddEqual extends Method
-  case object SubtractEqual extends Method
+  sealed trait Method {
+    def isMonotonic(): Boolean
+    def isIncreasing(): Boolean
+  }
 
-  object Method {
-    def isMonotonic(m: Method): Boolean = {
-      m match {
-        case AssignEqual => true
-        case MergeEqual => true
-        case AddEqual => true
-        case SubtractEqual => false
-      }
-    }
+  case object Assign extends Method {
+    override def isMonotonic() = true
+    override def isIncreasing() = false
+  }
 
-    def isIncreasing(m: Method): Boolean = {
-      m match {
-        case AssignEqual => false
-        case MergeEqual => true
-        case AddEqual => false
-        case SubtractEqual => false
-      }
-    }
+  case object MergeEqual extends Method {
+    override def isMonotonic() = true
+    override def isIncreasing() = true
+  }
+
+  case object AddEqual extends Method {
+    override def isMonotonic() = true
+    override def isIncreasing() = false
+  }
+
+  case object SubtractEqual extends Method {
+    override def isMonotonic() = false
+    override def isIncreasing() = false
   }
 
   // Rules /////////////////////////////////////////////////////////////////////
-  case class Rule(l: IntMaxLattice, m: Method, e: Expr)
-  object Rule {
-    def eval(rule: Rule) = {
-      val e = Expr.eval(rule.e)
-      rule.m match {
-        case AssignEqual => rule.l.assign(e)
-        case MergeEqual => rule.l.mergeEqual(e)
-        case AddEqual => rule.l += e
-        case SubtractEqual => rule.l -= e
+  case class Rule(l: IntMaxLattice, m: Method, e: Expr) {
+    def eval() = {
+      val v = e.eval()
+      m match {
+        case Assign => l.assign(v)
+        case MergeEqual => l.mergeEqual(v)
+        case AddEqual => l.addEqual(v)
+        case SubtractEqual => l.subtractEqual(v)
       }
     }
 
-    def isMonotonic(rule: Rule) = {
-      Method.isMonotonic(rule.m) && Expr.isMonotonic(rule.e)
-    }
+    def isMonotonic(): Boolean = m.isMonotonic() && e.isMonotonic()
+    def isIncreasing(): Boolean = m.isIncreasing()
+    def channels(): Set[Channel.Existential]  = Set()
+  }
 
-    def isIncreasing(rule: Rule) = {
-      Method.isIncreasing(rule.m)
-    }
-
-    def channels(rule: Rule): Set[fluent.Channel.Existential] = {
-      Set()
-    }
-
+  object Rule {
     implicit def toRule(r: Rule): fluent.Rule = IntMaxLatticeRule(r)
   }
 
-
   implicit class RuleInfix(l: IntMaxLattice) {
-    def <--(e: Expr) = Rule(l, AssignEqual, e)
+    def <--(e: Expr) = Rule(l, Assign, e)
     def <=(e: Expr) = Rule(l, MergeEqual, e)
     def +=(e: Expr) = Rule(l, AddEqual, e)
     def -=(e: Expr) = Rule(l, SubtractEqual, e)

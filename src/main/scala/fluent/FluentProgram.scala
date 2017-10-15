@@ -13,22 +13,18 @@ object FluentActor {
     Props(new FluentActor(channels, bootstrap_rules, rules))
   }
 
-  case class Message(name: String, t: AnyRef{val dst: String})
+  case class Message(name: String, t: Any)
 }
 
 class FluentActor(
     channels: Map[String, Channel.Existential],
     bootstrap_rules: List[Rule],
     rules: List[Rule])
-  extends Actor {
+    extends Actor {
   import FluentActor._
 
   if (bootstrap_rules.length != 0) {
     bootstrap_rules.foreach(eval_rule)
-  }
-
-  def addToChannel[A <: AnyRef{val dst: String}](c: Channel[A], t: Any) = {
-    c += Set(t.asInstanceOf[A])
   }
 
   override def receive = {
@@ -39,24 +35,26 @@ class FluentActor(
     }
   }
 
+  private def addToChannel[A <: AnyRef{val dst: String}](c: Channel[A], t: Any) = {
+    c.addEqual(Set(t.asInstanceOf[A]))
+  }
+
   private def eval_rule(rule: Rule) = {
     rule match {
-      case SetUnionLatticeRule(r) => SetUnionLattice.Rule.eval(r)
-      case IntMaxLatticeRule(r) => IntMaxLattice.Rule.eval(r)
-      case BoolOrLatticeRule(r) => BoolOrLattice.Rule.eval(r)
-      case StdOutRule(r) => StdOut.Rule.eval(r)
+      case SetUnionLatticeRule(r) => r.eval()
+      case IntMaxLatticeRule(r) => r.eval()
+      case BoolOrLatticeRule(r) => r.eval()
+      case StdOutRule(r) => r.eval()
       case ChannelRule(r) => {
         val v = r.e.eval()
         r.m match {
+          case Channel.SubtractEqual => r.l.subtractEqual(v)
           case Channel.AddEqual => {
             for (x <- v.xs) {
-              val dst_hostport = x.dst
-              val dst_addr = s"akka.tcp://fluent@${dst_hostport}/user/fluent"
-              val msg = Message(r.l.name, x)
-              context.actorSelection(dst_addr) ! msg
+              val dst_addr = s"akka.tcp://fluent@${x.dst}/user/fluent"
+              context.actorSelection(dst_addr) ! Message(r.l.name, x)
             }
           }
-          case Channel.SubtractEqual => r.l -= v
         }
       }
     }
@@ -70,17 +68,9 @@ trait FluentProgram {
   val bootstrap_rules: List[Rule] = List()
   val rules: List[Rule]
 
-  def hostport(): String = {
-    s"$host:$port"
-  }
-
-  def isMonotonic(): Boolean = {
-    rules.forall(Rule.isMonotonic(_))
-  }
-
-  def isIncreasing(): Boolean = {
-    rules.forall(Rule.isIncreasing(_))
-  }
+  def hostport(): String = s"$host:$port"
+  def isMonotonic(): Boolean = rules.forall(_.isMonotonic())
+  def isIncreasing(): Boolean = rules.forall(_.isIncreasing())
 
   def run(): (ActorSystem, ActorRef) = {
     val addr = s"akka.remote.netty.tcp.port=$port"
@@ -88,12 +78,10 @@ trait FluentProgram {
     val config = ConfigFactory.parseString(addr).withFallback(fallback)
     val system = ActorSystem("fluent", config)
 
-    val props = FluentActor.props(channels(), bootstrap_rules, rules)
+    val channels: Map[String, Channel.Existential] =
+      rules.flatMap(_.channels()).map(c => (c.name, c)).toMap
+    val props = FluentActor.props(channels, bootstrap_rules, rules)
     val actor = system.actorOf(props, "fluent")
     (system, actor)
-  }
-
-  private def channels(): Map[String, Channel.Existential] = {
-    rules.flatMap(Rule.channels(_)).map(c => (c.name, c)).toMap
   }
 }

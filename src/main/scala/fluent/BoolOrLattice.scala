@@ -13,11 +13,11 @@ case class BoolOrLattice(private var b: Boolean) extends Lattice[BoolOrLattice] 
     BoolOrLattice(b || that.b)
   }
 
-  def &&(that: BoolOrLattice): BoolOrLattice = {
+  def and(that: BoolOrLattice): BoolOrLattice = {
     BoolOrLattice(b && that.b)
   }
 
-  def ||(that: BoolOrLattice): BoolOrLattice = {
+  def or(that: BoolOrLattice): BoolOrLattice = {
     BoolOrLattice(b || that.b)
   }
 
@@ -26,11 +26,11 @@ case class BoolOrLattice(private var b: Boolean) extends Lattice[BoolOrLattice] 
     b = that.b
   }
 
-  def &&=(that: BoolOrLattice) = {
+  def andEqual(that: BoolOrLattice) = {
     b &&= that.b
   }
 
-  def ||=(that: BoolOrLattice) = {
+  def orEqual(that: BoolOrLattice) = {
     b ||= that.b
   }
 }
@@ -38,36 +38,36 @@ case class BoolOrLattice(private var b: Boolean) extends Lattice[BoolOrLattice] 
 object BoolOrLattice {
   // Expressions ///////////////////////////////////////////////////////////////
   sealed trait Expr {
+    def eval(): BoolOrLattice
+    def isMonotonic(): Boolean
+
     def &&(rhs: Expr) = And(this, rhs)
     def ||(rhs: Expr) = Or(this, rhs)
   }
 
-  case class Const(x: BoolOrLattice) extends Expr
-  case class And(lhs: Expr, rhs: Expr) extends Expr
-  case class Or(lhs: Expr, rhs: Expr) extends Expr
-  case class Greater(e: IntMaxLattice.Expr, x: Int) extends Expr
-  case class GreaterEqual(e: IntMaxLattice.Expr, x: Int) extends Expr
+  case class Const(x: BoolOrLattice) extends Expr {
+    override def eval() = x
+    override def isMonotonic() = true
+  }
 
-  object Expr {
-    def eval(e: Expr): BoolOrLattice = {
-      e match {
-        case Const(x) => x
-        case And(lhs, rhs) => eval(lhs) && eval(rhs)
-        case Or(lhs, rhs) => eval(lhs) || eval(rhs)
-        case Greater(e, x) => IntMaxLattice.Expr.eval(e) > x
-        case GreaterEqual(e, x) => IntMaxLattice.Expr.eval(e) >= x
-      }
-    }
+  case class And(lhs: Expr, rhs: Expr) extends Expr {
+    override def eval() = lhs.eval() and rhs.eval()
+    override def isMonotonic() = lhs.isMonotonic() && rhs.isMonotonic()
+  }
 
-    def isMonotonic(e: Expr): Boolean = {
-      e match {
-        case Const(_) => true
-        case And(lhs, rhs) => isMonotonic(lhs) && isMonotonic(rhs)
-        case Or(lhs, rhs) => isMonotonic(lhs) && isMonotonic(rhs)
-        case Greater(e, x) => IntMaxLattice.Expr.isMonotonic(e)
-        case GreaterEqual(e, x) => IntMaxLattice.Expr.isMonotonic(e)
-      }
-    }
+  case class Or(lhs: Expr, rhs: Expr) extends Expr {
+    override def eval() = lhs.eval() or rhs.eval()
+    override def isMonotonic() = lhs.isMonotonic() && rhs.isMonotonic()
+  }
+
+  case class Greater(e: IntMaxLattice.Expr, x: Int) extends Expr {
+    override def eval() = e.eval() greater x
+    override def isMonotonic() = e.isMonotonic()
+  }
+
+  case class GreaterEqual(e: IntMaxLattice.Expr, x: Int) extends Expr {
+    override def eval() = e.eval() greaterEqual x
+    override def isMonotonic() = e.isMonotonic()
   }
 
   implicit def toConst(l: BoolOrLattice): Const = {
@@ -75,53 +75,43 @@ object BoolOrLattice {
   }
 
   // Methods ///////////////////////////////////////////////////////////////////
-  sealed trait Method
-  case object AssignEqual extends Method
-  case object AndEqual extends Method
-  case object OrEqual extends Method
+  sealed trait Method {
+    def isMonotonic(): Boolean
+    def isIncreasing(): Boolean
+  }
 
-  object Method {
-    def isMonotonic(m: Method): Boolean = {
-      m match {
-        case AssignEqual => true
-        case AndEqual => true
-        case OrEqual => true
-      }
-    }
+  case object AssignEqual extends Method {
+    override def isMonotonic() = true
+    override def isIncreasing() = false
+  }
 
-    def isIncreasing(m: Method): Boolean = {
-      m match {
-        case AssignEqual => false
-        case AndEqual => false
-        case OrEqual => true
-      }
-    }
+  case object AndEqual extends Method {
+    override def isMonotonic() = true
+    override def isIncreasing() = false
+  }
+
+  case object OrEqual extends Method {
+    override def isMonotonic() = true
+    override def isIncreasing() = true
   }
 
   // Rules /////////////////////////////////////////////////////////////////////
-  case class Rule(l: BoolOrLattice, m: Method, e: Expr)
-  object Rule {
-    def eval(rule: Rule) = {
-      val e = Expr.eval(rule.e)
-      rule.m match {
-        case AssignEqual => rule.l.assign(e)
-        case AndEqual => rule.l &&= e
-        case OrEqual => rule.l ||= e
+  case class Rule(l: BoolOrLattice, m: Method, e: Expr) {
+    def eval() = {
+      val v = e.eval()
+      m match {
+        case AssignEqual => l.assign(v)
+        case AndEqual => l.andEqual(v)
+        case OrEqual => l.orEqual(v)
       }
     }
 
-    def isMonotonic(rule: Rule) = {
-      Method.isMonotonic(rule.m) && Expr.isMonotonic(rule.e)
-    }
+    def isMonotonic(): Boolean = m.isMonotonic() && e.isMonotonic()
+    def isIncreasing(): Boolean = m.isMonotonic()
+    def channels(): Set[fluent.Channel.Existential] = Set()
+  }
 
-    def isIncreasing(rule: Rule) = {
-      Method.isIncreasing(rule.m)
-    }
-
-    def channels(rule: Rule): Set[fluent.Channel.Existential] = {
-      Set()
-    }
-
+  object Rule {
     implicit def toRule(r: Rule): fluent.Rule = BoolOrLatticeRule(r)
   }
 

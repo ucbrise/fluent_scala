@@ -4,11 +4,13 @@ import scala.language.implicitConversions
 
 case class Channel[A <: AnyRef{val dst: String}](val name: String) {
   private var xs: Set[A] = Set()
+
   def get() = xs
-  def assign(that: SetUnionLattice[A]) = {xs = that.xs}
-  def +=(xs: Set[A]) = {this.xs = this.xs.union(xs)}
-  def -=(that: SetUnionLattice[A]) = {xs = xs.diff(that.xs)}
   def clear() = {xs = Set()}
+
+  def assign(that: SetUnionLattice[A]) = {xs = that.xs}
+  def addEqual(xs: Set[A]) = {this.xs = this.xs.union(xs)}
+  def subtractEqual(that: SetUnionLattice[A]) = {xs = xs.diff(that.xs)}
 }
 
 object Channel {
@@ -22,45 +24,29 @@ object Channel {
   }
 
   // Methods ///////////////////////////////////////////////////////////////////
-  sealed trait Method
-  case object AddEqual extends Method
-  case object SubtractEqual extends Method
+  sealed trait Method {
+    def isMonotonic(): Boolean
+    def isIncreasing(): Boolean
+  }
 
-  object Method {
-    def isMonotonic(m: Method): Boolean = {
-      m match {
-        case AddEqual => true
-        case SubtractEqual => false
-      }
-    }
+  case object AddEqual extends Method {
+    override def isMonotonic() = true
+    override def isIncreasing() = true
+  }
 
-    def isIncreasing(m: Method): Boolean = {
-      m match {
-        case AddEqual => true
-        case SubtractEqual => false
-      }
-    }
+  case object SubtractEqual extends Method {
+    override def isMonotonic() = false
+    override def isIncreasing() = false
   }
 
   // Rules /////////////////////////////////////////////////////////////////////
-  case class Rule[A <: AnyRef{val dst: String}](
-    l: Channel[A],
-    m: Method,
-    e: Expr[A])
+  case class Rule[A <: AnyRef{val dst: String}](l: Channel[A], m: Method, e: Expr[A]) {
+    def isMonotonic() = m.isMonotonic() && e.isMonotonic()
+    def isIncreasing() = m.isIncreasing()
+    def channels(): Set[fluent.Channel.Existential] = e.channels()
+  }
 
   object Rule {
-    def isMonotonic[A <: AnyRef{val dst: String}](rule: Rule[A]) = {
-      Method.isMonotonic(rule.m) && Expr.isMonotonic(rule.e)
-    }
-
-    def isIncreasing[A <: AnyRef{val dst: String}](rule: Rule[A]) = {
-      Method.isIncreasing(rule.m)
-    }
-
-    def channels[A <: AnyRef{val dst: String}](rule: Rule[A]): Set[fluent.Channel.Existential] = {
-      rule.e.channels()
-    }
-
     implicit def toRule[A <: AnyRef{val dst: String}](r: Rule[A]): fluent.Rule = {
       ChannelRule(r)
     }
