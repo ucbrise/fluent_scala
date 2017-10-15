@@ -4,6 +4,7 @@ import scala.language.implicitConversions
 
 case class Channel[A <: AnyRef{val dst: String}](val name: String) {
   private var xs: Set[A] = Set()
+  def get() = xs
   def assign(that: SetUnionLattice[A]) = {xs = that.xs}
   def +=(xs: Set[A]) = {this.xs = this.xs.union(xs)}
   def -=(that: SetUnionLattice[A]) = {xs = xs.diff(that.xs)}
@@ -13,9 +14,11 @@ case class Channel[A <: AnyRef{val dst: String}](val name: String) {
 object Channel {
   import SetUnionLattice.Expr
 
+  type Existential = Channel[T] forSome {type T <: AnyRef{val dst: String}};
+
   // Expressions ///////////////////////////////////////////////////////////////
-  implicit def toExpr[A <: AnyRef{val dst: String}](c: Channel[A]): SetUnionLattice.Const[A] = {
-    SetUnionLattice.Const(SetUnionLattice(c.xs))
+  implicit def toExpr[A <: AnyRef{val dst: String}](c: Channel[A]): SetUnionLattice.Channel[A] = {
+    SetUnionLattice.Channel(c)
   }
 
   // Methods ///////////////////////////////////////////////////////////////////
@@ -52,6 +55,10 @@ object Channel {
 
     def isIncreasing[A <: AnyRef{val dst: String}](rule: Rule[A]) = {
       Method.isIncreasing(rule.m)
+    }
+
+    def channels[A <: AnyRef{val dst: String}](rule: Rule[A]): Set[fluent.Channel.Existential] = {
+      rule.e.channels()
     }
 
     implicit def toRule[A <: AnyRef{val dst: String}](r: Rule[A]): fluent.Rule = {

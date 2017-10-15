@@ -48,6 +48,10 @@ object StdOut {
       Method.isIncreasing(rule.m)
     }
 
+    def channels(rule: Rule): Set[Channel.Existential] = {
+      rule.e.channels()
+    }
+
     implicit def toRule(r: Rule): fluent.Rule = StdOutRule(r)
   }
 

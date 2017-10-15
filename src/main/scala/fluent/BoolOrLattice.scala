@@ -118,6 +118,10 @@ object BoolOrLattice {
       Method.isIncreasing(rule.m)
     }
 
+    def channels(rule: Rule): Set[fluent.Channel.Existential] = {
+      Set()
+    }
+
     implicit def toRule(r: Rule): fluent.Rule = BoolOrLatticeRule(r)
   }
 

@@ -27,4 +27,14 @@ object Rule {
       case StdOutRule(r) => StdOut.Rule.isIncreasing(r)
     }
   }
+
+  def channels(rule: Rule): Set[Channel.Existential] = {
+    rule match {
+      case SetUnionLatticeRule(r) => SetUnionLattice.Rule.channels(r)
+      case IntMaxLatticeRule(r) => IntMaxLattice.Rule.channels(r)
+      case BoolOrLatticeRule(r) => BoolOrLattice.Rule.channels(r)
+      case ChannelRule(r) => Channel.Rule.channels(r)
+      case StdOutRule(r) => StdOut.Rule.channels(r)
+    }
+  }
 }

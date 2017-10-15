@@ -6,7 +6,7 @@ import akka.actor.{Actor, ActorLogging, ActorRef, ActorSystem, Props}
 import com.typesafe.config.ConfigFactory
 
 object FluentActor {
-  def props(channels: Map[String, Channel[AnyRef{val dst: String}]],
+  def props(channels: Map[String, Channel.Existential],
             bootstrap_rules: List[Rule],
             rules: List[Rule])
             : Props = {
@@ -17,7 +17,7 @@ object FluentActor {
 }
 
 class FluentActor(
-    channels: Map[String, Channel[AnyRef{val dst: String}]],
+    channels: Map[String, Channel.Existential],
     bootstrap_rules: List[Rule],
     rules: List[Rule])
   extends Actor {
@@ -27,9 +27,13 @@ class FluentActor(
     bootstrap_rules.foreach(eval_rule)
   }
 
+  def addToChannel[A <: AnyRef{val dst: String}](c: Channel[A], t: Any) = {
+    c += Set(t.asInstanceOf[A])
+  }
+
   override def receive = {
     case Message(name, t) => {
-      channels(name) += Set(t)
+      addToChannel(channels(name), t)
       rules.foreach(eval_rule)
       channels.foreach({case (_, c) => c.clear()})
     }
@@ -42,7 +46,7 @@ class FluentActor(
       case BoolOrLatticeRule(r) => BoolOrLattice.Rule.eval(r)
       case StdOutRule(r) => StdOut.Rule.eval(r)
       case ChannelRule(r) => {
-        val v = SetUnionLattice.Expr.eval(r.e)
+        val v = r.e.eval()
         r.m match {
           case Channel.AddEqual => {
             for (x <- v.xs) {
@@ -89,10 +93,7 @@ trait FluentProgram {
     (system, actor)
   }
 
-  private def channels(): Map[String, Channel[AnyRef{val dst: String}]] = {
-    rules.flatMap({
-      case ChannelRule(r) => Some((r.l.name, r.l))
-      case _ => None
-    }).toMap
+  private def channels(): Map[String, Channel.Existential] = {
+    rules.flatMap(Rule.channels(_)).map(c => (c.name, c)).toMap
   }
 }
