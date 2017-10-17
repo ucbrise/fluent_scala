@@ -29,14 +29,12 @@ class FluentActor(
 
   override def receive = {
     case Message(name, t) => {
-      addToChannel(channels(name), t)
+      channels(name) match {
+        case c: Channel[a] => c.addEqual(Set(t.asInstanceOf[a]))
+      }
       rules.foreach(eval_rule)
       channels.foreach({case (_, c) => c.clear()})
     }
-  }
-
-  private def addToChannel[A <: AnyRef{val dst: String}](c: Channel[A], t: Any) = {
-    c.addEqual(Set(t.asInstanceOf[A]))
   }
 
   private def eval_rule(rule: Rule) = {
