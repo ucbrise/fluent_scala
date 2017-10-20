@@ -17,14 +17,14 @@ class Client(
 
   override val bootstrap_rules = {
     import SetUnionLattice._
-    List(
+    List[fluent.Rule](
       connect += Val(Connect(s"$server_host:$server_port", hostport)),
-      mcast += Val(MCast(s"$server_host:$server_port", name)),
+      mcast += Val(MCast(s"$server_host:$server_port", name))
     )
   }
 
   override val rules = {
-    List(stdout += mcast.map(_.msg))
+    List[fluent.Rule](stdout += mcast.map(_.msg))
   }
 }
 

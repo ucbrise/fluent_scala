@@ -13,9 +13,9 @@ class Server(val host: String, val port: Int) extends FluentProgram {
   override val name = "chat_server"
 
   override val rules = {
-    List(
+    List[Rule](
       nodelist += connect.map(c => NodeList(c.client_addr)),
-      mcast += mcast.cross(nodelist).map({case (m, n) => MCast(n.addr, m.msg)}),
+      mcast += mcast.cross(nodelist).map({case (m, n) => MCast(n.addr, m.msg)})
     )
   }
 }

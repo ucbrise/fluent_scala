@@ -11,10 +11,10 @@ class Example extends FluentProgram {
   override val host = "localhost"
   override val port = 8000
   override val rules = {
-    List(
+    List[Rule](
       t += t,
       x += t.size() - x,
-      b &&= t.size() > 10,
+      b &&= t.size() > 10
     )
   }
 }
