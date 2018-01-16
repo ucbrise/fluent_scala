@@ -1,5 +1,7 @@
 package examples.lattices
 
+import fluent.Embedding.Predef._
+import fluent.Embedding.Quasicodes._
 import fluent._
 
 class Example extends FluentProgram {
@@ -10,13 +12,15 @@ class Example extends FluentProgram {
   override val name = "lattices_example"
   override val host = "localhost"
   override val port = 8000
-  override val rules = {
-    List[Rule](
-      t += t,
-      x += t.size() - x,
-      b &&= t.size() > 10
-    )
+  override val channels = Map[String, Channel.Existential]()
+
+  override type Context = t.Ctx with x.Ctx with b.Ctx
+  override val rules = ir{
+    ${t} += ${t}
+    ${x} += ${t}.size() - ${x}
+    ${b} &&= ${t}.size() > 10
   }
+  override val assignment = t & x & b
 }
 
 object Example extends App {
